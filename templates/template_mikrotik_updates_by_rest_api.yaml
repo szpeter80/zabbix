@@ -1,0 +1,147 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: bf1b4ba3b5c64e1b986020635145e41b
+      name: 'Templates/Network devices'
+  templates:
+    - uuid: ed4d6e8540ca49d88ba19d91746959cc
+      template: 'MikroTik updates by HTTP REST API'
+      name: 'MikroTik updates by HTTP REST API'
+      description: |
+        Check actual and available RouterOS versions, alerts when update is available.
+        
+        It uses the RouterOS REST API and a standard user account in ROS.
+        The REST API is not the native API - it uses the web ui port and its cert.
+        
+        If you have no certificate, a temporary measure is to roll your own self-signed:
+        
+        ===============================================
+        # 1. Create local CA
+        /certificate
+        add name=mikrotik-local-ca \
+            common-name=mikrotik-local-ca \
+            key-size=2048 \
+            key-usage=key-cert-sign,crl-sign \
+            days-valid=3650
+        
+        sign mikrotik-local-ca
+        :delay 3s
+        
+        # 2. Create WebFig UI certificate
+        /certificate
+        add name=mikrotik-ui-cert \
+            common-name=router.example.lan \
+            subject-alt-name=DNS:router.example.lan,IP:192.168.88.1 \
+            key-size=2048 \
+            key-usage=digital-signature,key-encipherment,tls-server \
+            days-valid=3650
+        
+        sign mikrotik-ui-cert ca=mikrotik-local-ca
+        :delay 3s
+        
+        # 3. Bind certificates to services
+        /ip/service set www-ssl certificate=mikrotik-ui-cert disabled=no
+        
+        ===============================================
+      groups:
+        - name: 'Templates/Network devices'
+      items:
+        - uuid: c2c19e60a88b467f9802ebc685ed5074
+          name: 'RouterOS: Update channel'
+          type: DEPENDENT
+          key: mikrotik.restapi.update.channel
+          history: 90d
+          value_type: CHAR
+          description: 'Configured RouterOS update channel (long-term, stable, testing, or development).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[0].channel'
+          master_item:
+            key: mikrotik.restapi.update.raw
+          tags:
+            - tag: component
+              value: firmware
+        - uuid: d151b5d5c66740849f252cb7b64c0f2b
+          name: 'RouterOS: Installed firmware version'
+          type: DEPENDENT
+          key: mikrotik.restapi.update.installed-version
+          history: 999d
+          value_type: CHAR
+          description: 'Installed RouterOS version reported by /system/package/update.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[0]["installed-version"]'
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - '43200'
+          master_item:
+            key: mikrotik.restapi.update.raw
+          tags:
+            - tag: component
+              value: firmware
+        - uuid: a37b821740f94a29983eaef550b40bc7
+          name: 'RouterOS: Latest version on configured channel'
+          type: DEPENDENT
+          key: mikrotik.restapi.update.latest
+          history: 90d
+          value_type: CHAR
+          description: 'Latest RouterOS version reported for the configured update channel.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[0]["latest-version"]'
+          master_item:
+            key: mikrotik.restapi.update.raw
+          tags:
+            - tag: component
+              value: firmware
+        - uuid: eec6ae3e351b4f3d815f85839902a9fa
+          name: 'RouterOS: Update settings (REST API)'
+          type: HTTP_AGENT
+          key: mikrotik.restapi.update.raw
+          delay: 1h
+          history: 7d
+          value_type: TEXT
+          authtype: BASIC
+          username: '{$MIKROTIK.API.USER}'
+          password: '{$MIKROTIK.API.PASSWORD}'
+          description: 'Normalized JSON response from /rest/system/package/update.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var response = JSON.parse(value);
+                  var record = Array.isArray(response) ? response[0] : response;
+                  if (!record || typeof record !== 'object') {
+                      throw 'Unexpected RouterOS update API response';
+                  }
+                  return JSON.stringify([record]);
+          timeout: 10s
+          url: 'https://{HOST.CONN}:{$MIKROTIK.API.PORT}/rest/system/package/update'
+          follow_redirects: 'NO'
+          headers:
+            - name: Accept
+              value: application/json
+          verify_host: 'YES'
+          tags:
+            - tag: component
+              value: api
+            - tag: component
+              value: firmware
+      tags:
+        - tag: class
+          value: network
+        - tag: vendor
+          value: mikrotik
+      macros:
+        - macro: '{$MIKROTIK.API.PASSWORD}'
+          type: SECRET_TEXT
+          description: 'RouterOS REST API password'
+        - macro: '{$MIKROTIK.API.PORT}'
+          value: '443'
+          description: 'RouterOS www-ssl service port'
+        - macro: '{$MIKROTIK.API.USER}'
+          value: zabbix
+          description: 'RouterOS REST API username (read-only)'

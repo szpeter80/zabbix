@@ -1,0 +1,160 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 36bff6c29af64692839d077febfc7079
+      name: 'Templates/Network devices'
+  templates:
+    - uuid: 7c67b9d6be0a49c598e10c71cf3667d9
+      template: 'Mikrotik by SNMP - SW update addon'
+      name: 'Mikrotik by SNMP - SW update addon'
+      description: 'This template extends and depends on the template ''Mikrotik by SNMP'''
+      groups:
+        - name: 'Templates/Network devices'
+      items:
+        - uuid: 36dd813f4c344802b4f3ad3a45050f75
+          name: 'Mikrotik: Has OS version delta (long-term)'
+          type: CALCULATED
+          key: mikrotik.routeros.has-os-version-delta.longterm
+          delay: 2h
+          history: 999d
+          trends: '0'
+          params: 'last(/mikrotik-sw-release/mikrotik.routeros.latest-version[longterm])<> last(//system.sw.os[mtxrLicVersion.0]) and length(last(//system.sw.os[mtxrLicVersion.0]))>0'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+        - uuid: bef4529f9b4b486ea86791989d0c1251
+          name: 'Mikrotik: Has OS version delta (stable)'
+          type: CALCULATED
+          key: mikrotik.routeros.has-os-version-delta.stable
+          delay: 2h
+          history: 999d
+          trends: '0'
+          params: 'last(/mikrotik-sw-release/mikrotik.routeros.latest-version[stable])<> last(//system.sw.os[mtxrLicVersion.0]) and length(last(//system.sw.os[mtxrLicVersion.0]))>0'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+        - uuid: 9967351667ab482ca8df45dcdd47a5e5
+          name: 'Mikrotik: Board firmware match OS version'
+          type: CALCULATED
+          key: mikrotik.routeros.sw-version-match
+          delay: 2h
+          history: 999d
+          trends: '0'
+          params: 'last(//system.sw.os[mtxrLicVersion.0]) = last(//system.hw.firmware) and length(last(//system.hw.firmware))>0 and length(last(//system.sw.os[mtxrLicVersion.0]))>0'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+          triggers:
+            - uuid: 3f697dc71baf484cb435a8ce712e7492
+              expression: 'last(/Mikrotik by SNMP - SW update addon/mikrotik.routeros.sw-version-match) <> 1'
+              name: 'OS and board firmware does not match'
+              opdata: 'reboot required'
+              priority: WARNING
+              manual_close: 'YES'
+        - uuid: 53e2276cf30a49dfb4143975700af973
+          name: 'Mikrotik: Update channel'
+          type: CALCULATED
+          key: mikrotik.routeros.system-update-channel
+          delay: 5m
+          history: 999d
+          value_type: TEXT
+          params: last(//mikrotik.routeros.system-verbose-description)
+          description: 'Actual system update channel'
+          preprocessing:
+            - type: REGEX
+              parameters:
+                - '^.*\((.*)\).*$'
+                - \1
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+        - uuid: 71212eff79ea4f3eb7b94738362b6b93
+          name: 'Mikrotik: System verbose description'
+          type: SNMP_AGENT
+          snmp_oid: .1.3.6.1.2.1.47.1.1.1.1.2.65536
+          key: mikrotik.routeros.system-verbose-description
+          delay: 20m
+          history: 999d
+          value_type: TEXT
+          description: |
+            The OID 1.3.6.1.2.1.47.1.1.1.1.2.65536 in MikroTik MIBs typically resolves to the entPhysicalDescr (Entity Physical Description) for a specific physical entity, often identifying the RouterOS version, update channel set, and hardware. Example: 
+            
+            .1.3.6.1.2.1.47.1.1.1.1.2.65536 = STRING: "RouterOS 7.20.7 (long-term) on C53UiG+5HPaxD2HPaxD"
+            
+            
+            Breakdown of the OID:
+            
+                1.3.6.1.2.1.47.1.1.1.1.2: This part points to entPhysicalDescr within the Entity MIB (RFC 2790), describing hardware elements.
+                .65536: This is the instance identifier, specifying which particular physical entity (e.g., a specific port, module, or the main device itself) is being queried.
+        - uuid: 2aaa12ec034648f8a33fb098cb4766be
+          name: 'Mikrotik: Firmware version (audit)'
+          type: CALCULATED
+          key: system.hw.firmware-audit
+          delay: 1h
+          history: 999d
+          value_type: CHAR
+          params: last(//system.hw.firmware)
+          description: 'Long term history storage of actual firmware and the change of it'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+        - uuid: 385b8293cb334837b45cb5b0e0841dc8
+          name: 'Mikrotik: OS version (audit)'
+          type: CALCULATED
+          key: system.hw.os-audit
+          delay: 1h
+          history: 999d
+          value_type: CHAR
+          params: 'last(//system.sw.os[mtxrLicVersion.0])'
+          description: 'Long term history storage of actual OS version and the change of it'
+          preprocessing:
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          tags:
+            - tag: component
+              value: system
+      tags:
+        - tag: class
+          value: network
+        - tag: target
+          value: mikrotik
+      dashboards:
+        - uuid: 6bc884e1f51c4e72b320199187b54fd5
+          name: 'Network interfaces'
+          pages:
+            - widgets:
+                - type: graphprototype
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: INTEGER
+                      name: columns
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: AAAJG
+  triggers:
+    - uuid: 7aecd45148ed4736b7cd49da2db83cf3
+      expression: '(last(/Mikrotik by SNMP - SW update addon/mikrotik.routeros.has-os-version-delta.stable)>0 and last(/Mikrotik by SNMP - SW update addon/mikrotik.routeros.system-update-channel)="stable") or (last(/Mikrotik by SNMP - SW update addon/mikrotik.routeros.has-os-version-delta.longterm)>0 and last(/Mikrotik by SNMP - SW update addon/mikrotik.routeros.system-update-channel)="long-term")'
+      name: 'OS upgrade is available'
+      priority: WARNING
